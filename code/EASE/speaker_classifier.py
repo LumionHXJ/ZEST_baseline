@@ -91,7 +91,7 @@ class ReverseLayerF(Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        output = grad_output.neg() * ctx.alpha
+        output = grad_output.neg() * ctx.alpha # 这里进行了反转（即对抗训练），alpha为缩放因子
 
         return output, None
 
@@ -117,13 +117,13 @@ class SpeakerModel(nn.Module):
         return out, emo_out, feat
 
 def create_dataset(mode, bs=32):
-    speaker_folder = "/folder/to/x-vectors"
+    folder = ""
     if mode == 'train':
-        folder = "/folder/to/train/audio/files"
+        speaker_folder = "/data/huxingjian/Emotion Speech Dataset/English/train_numpy"
     elif mode == 'val':
-        folder = "/folder/to/validation/audio/files"
+        speaker_folder = "/data/huxingjian/Emotion Speech Dataset/English/val_numpy"
     elif mode =="test":
-        folder = "/folder/to/test/audio/files"
+        speaker_folder = "/data/huxingjian/Emotion Speech Dataset/English/test_numpy"
     dataset = MyDataset(folder, speaker_folder)
     loader = DataLoader(dataset,
                     batch_size=bs,

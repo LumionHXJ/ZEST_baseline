@@ -141,8 +141,8 @@ class CrossAttentionModel(nn.Module):
 class PitchModel(nn.Module):
     def __init__(self, hparams):
         super(PitchModel, self).__init__()
-        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-robust-ft-swbd-300h")
-        self.wav2vec = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-robust-ft-swbd-300h", output_hidden_states=True)
+        self.processor = Wav2Vec2Processor.from_pretrained("/home/huxingjian/model/huggingface/facebook/wav2vec2-large-robust-ft-swbd-300h")
+        self.wav2vec = Wav2Vec2ForCTC.from_pretrained("/home/huxingjian/model/huggingface/facebook/wav2vec2-large-robust-ft-swbd-300h", output_hidden_states=True)
         self.encoder = WAV2VECModel(self.wav2vec, hparams["output_classes"], hparams["emotion_embedding_dim"])
         self.embedding = nn.Embedding(101, 128, padding_idx=100)        
         self.fusion = CrossAttentionModel(128, 128)
@@ -172,9 +172,8 @@ class PitchModel(nn.Module):
 def get_f0():
     os.makedirs("pred_DSDT_f0", exist_ok=True)
     test_loader = create_dataset("test", 1)
-    model = PitchModel(hparams)
-    model = torch.load('f0_predictor.pth', map_location=device)
-    model.to(device)
+    model = PitchModel(hparams).to(device)
+    model.load_state_dict(torch.load('cp_f0_predictor/f0_predictor_epoch_74.pth', map_location=device))
     model.eval()
     sources = ["0011_000021.wav", "0012_000022.wav", "0013_000025.wav",
                "0014_000032.wav", "0015_000034.wav", "0016_000035.wav",
@@ -207,7 +206,7 @@ def get_f0():
                 speaker = source[:5]
                 if speaker not in names[0] and labels[0] > 0 and (int(names[0][5:11]) - int(source[5:11]))%350 != 0:
                     inputs_t = inputs
-                    pitch_pred, _, _, _ = model(inputs_t, tokens_s, speaker_s, mask_s)
+                    pitch_pred, _, _, _ = model(inputs_t, tokens_s, speaker_s, mask_s) # 替换了audio
                     pitch_pred = torch.exp(pitch_pred) - 1
                     final_name = source_name + names[0]
                     final_name = final_name.replace(".wav", ".npy")

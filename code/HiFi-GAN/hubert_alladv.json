@@ -1,14 +1,14 @@
 {
-    "input_training_file": "/ZEST/code/train_esd.txt",
-    "input_validation_file": "/ZEST/code/val_esd.txt",
+    "input_training_file": "code/train_esd.txt",
+    "input_validation_file": "code/val_esd.txt",
 
     "resblock": "1",
-    "num_gpus": 0,
-    "batch_size": 32,
+    "num_gpus": 4,
+    "batch_size": 256, 
     "learning_rate": 0.0002,
     "adam_b1": 0.8,
     "adam_b2": 0.99,
-    "lr_decay": 0.999,
+    "lr_decay": 0.99,
     "seed": 1234,
 
     "upsample_rates": [5,4,4,2,2],
@@ -32,7 +32,7 @@
     "hop_size": 256,
     "win_size": 1024,
 
-    "f0_stats": "datasets/ESD/esd_f0_stats.pth",
+    "f0_stats": "code/esd_f0_stats.pth",
     "f0_normalize": true,
     "f0_feats": false,
     "f0_median": false,

@@ -81,7 +81,7 @@ class MyDataset(Dataset):
         speaker_dict = {}
         for ind in range(11, 21):
             speaker_dict["00"+str(ind)] = ind-11
-        speaker_feature = np.load(os.path.join("/folder/to/EASE/embeddings", file_name.replace(".wav", ".npy")))
+        speaker_feature = np.load(os.path.join("EASE_embeddings", file_name.replace(".wav", ".npy")))
 
         return speaker_feature, speaker_dict[spkr_name]
         
@@ -200,8 +200,8 @@ class CrossAttentionModel(nn.Module):
 class PitchModel(nn.Module):
     def __init__(self, hparams):
         super(PitchModel, self).__init__()
-        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-robust-ft-swbd-300h")
-        self.wav2vec = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-robust-ft-swbd-300h", output_hidden_states=True)
+        self.processor = Wav2Vec2Processor.from_pretrained("/home/huxingjian/model/huggingface/facebook/wav2vec2-large-robust-ft-swbd-300h")
+        self.wav2vec = Wav2Vec2ForCTC.from_pretrained("/home/huxingjian/model/huggingface/facebook/wav2vec2-large-robust-ft-swbd-300h", output_hidden_states=True)
         self.encoder = WAV2VECModel(self.wav2vec, 5, hparams["emotion_embedding_dim"])
         self.embedding = nn.Embedding(101, 128, padding_idx=100)        
         self.fusion = CrossAttentionModel(128, 128)
@@ -264,13 +264,13 @@ def custom_collate(data):
 
 def create_dataset(mode, bs=24):
     if mode == 'train':
-        folder = "/folder/to/train/audio/files"
+        folder = "/data/huxingjian/Emotion Speech Dataset/English/train"
         token_file = train_tokens_orig["ESD"]
     elif mode == 'val':
-        folder = "/folder/to/validation/audio/files"
+        folder = "/data/huxingjian/Emotion Speech Dataset/English/val"
         token_file = val_tokens_orig["ESD"]
     else:
-        folder = "/folder/to/test/audio/files"
+        folder = "/data/huxingjian/Emotion Speech Dataset/English/test"
         token_file = test_tokens_orig["ESD"]
     dataset = MyDataset(folder, token_file)
     loader = DataLoader(dataset,

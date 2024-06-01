@@ -21,9 +21,9 @@ import numpy as np
 import torch
 from scipy.io.wavfile import write
 import soundfile as sf
-from dataset_f0recon import CodeDataset, parse_manifest, mel_spectrogram, \
+from dataset import CodeDataset, parse_manifest, mel_spectrogram, \
     MAX_WAV_VALUE, load_audio
-from dataset_f0recon import get_yaapt_f0
+from dataset import get_yaapt_f0
 from utils import AttrDict
 from models import CodeGenerator
 import amfm_decompy.basic_tools as basic
@@ -156,10 +156,16 @@ def init_worker(queue, arguments):
 @torch.no_grad()
 def inference(item_index):
     speaker_id = {}
+    DSDT_sources = ["0011_000021.wav", "0012_000022.wav", "0013_000025.wav",
+               "0014_000032.wav", "0015_000034.wav", "0016_000035.wav",
+               "0017_000038.wav", "0018_000043.wav", "0019_000023.wav",
+               "0020_000047.wav"] # copy from pitch_convert.py
 
-    for ind in range(11, 21):
+    for ind in range(11, 21): # NOTE: ENGLISH
         speaker_id["00"+str(ind)] = ind-11
     code, gt_audio, filename, _ = dataset[item_index]
+    if filename.split('/')[-1] not in DSDT_sources:
+        return
     code = {k: torch.tensor(v).to(device).unsqueeze(0) for k, v in code.items()}
 
     if a.parts:
@@ -169,7 +175,7 @@ def inference(item_index):
         fname_out_name = Path(filename).stem
    
 
-    if int(fname_out_name[5:11]) < 350:
+    if int(fname_out_name[5:11]) < 350: # NOTE: 要求source是中性的
         if h.get('f0_vq_params', None) or h.get('f0_quantizer', None):
             to_remove = gt_audio.shape[-1] % (16 * 80)
             assert to_remove % h['code_hop_size'] == 0
@@ -189,20 +195,20 @@ def inference(item_index):
         
         if h.get('multispkr', None) and a.convert:
             print("In conversion")
-            reference_files = os.listdir("/folder/to/ESD/test/wavs")
-            #Change line 194 for setting same/different source/reference speaker
-            reference_files = [x for x in reference_files if x[:4] != fname_out_name[:4]]
-            reference_files = [x for x in reference_files if int(x[5:11]) >= 350]
+            reference_files = os.listdir("/data/huxingjian/Emotion Speech Dataset/English/test/")
+            # Change line 194 for setting same/different source/reference speaker  (SS/DS)
+            reference_files = [x for x in reference_files if x[:4] != fname_out_name[:4]] 
+            reference_files = [x for x in reference_files if int(x[5:11]) >= 350] # picking: not neutral
             reference_files = [x for x in reference_files if ".wav" in x]
             source_num = int(fname_out_name[5:11])
-            #Change line 199 for setting same/different source/reference utterance
+            #Change line 199 for setting same/different source/reference utterance （ST/DT)
             reference_files = [x for x in reference_files if (int(x[5:11])-source_num)%350!=0]
             
             for i, filename in enumerate(reference_files):
                 print(i, filename)
-                emo_embed = np.load("/ZEST/code/F0_predictor/wav2vec_feats/" + filename.replace(".wav", ".npy"))
+                emo_embed = np.load("wav2vec_feats/" + filename.replace(".wav", ".npy"))
                 feats = {}
-                f0 = np.load("/ZEST/code/F0_predictor/pred_DSDT_f0" + fname_out_name + filename.replace(".wav", ".npy"))
+                f0 = np.load("pred_DSDT_f0/" + fname_out_name + filename.replace(".wav", ".npy"))
                 f0 = f0.astype(np.float32)
                 trg_f0 = f0
                 new_f0 = torch.tensor(f0)
@@ -223,7 +229,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--code_file', default=None)
-    parser.add_argument('--input_code_file', default="/ZEST/code/test_esd.txt")
+    parser.add_argument('--input_code_file', default="code/test_esd.txt")
     parser.add_argument('--output_dir', default='DSDT')
     parser.add_argument('--emo_folder', default='')
     parser.add_argument('--pitch_folder', default='')
@@ -284,7 +290,6 @@ def main():
                               f0_feats=h.get('f0_feats', False), f0_median=h.get('f0_median', False),
                               f0_interp=h.get('f0_interp', False), vqvae=h.get('code_vq_params', False),
                               pad=a.pad, pitch_folder=a.pitch_folder, emo_folder=a.emo_folder)
-
     if a.debug:
         ids = list(range(1))
         import queue

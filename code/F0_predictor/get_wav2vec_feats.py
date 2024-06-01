@@ -14,14 +14,14 @@ from sklearn.metrics import f1_score
 from tqdm import tqdm
 import random
 import torch.nn.functional as F
-from config import hparams, f0_stats
+from config import hparams
 #from config import train_tokens, val_tokens, test_tokens, f0_file
 from config import train_tokens_orig, val_tokens_orig, test_tokens_orig, f0_file
 import pickle5 as pickle
 import ast
 import math
 from torch.autograd import Function
-from pitch_convert import crema_dataset
+from pitch_convert import create_dataset
 
 #Logger set
 logging.basicConfig(
@@ -147,9 +147,9 @@ class CrossAttentionModel(nn.Module):
 class PitchModel(nn.Module):
     def __init__(self, hparams):
         super(PitchModel, self).__init__()
-        self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-robust-ft-swbd-300h")
-        self.wav2vec = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-robust-ft-swbd-300h", output_hidden_states=True)
-        self.encoder = WAV2VECModel(self.wav2vec, 3, hparams["emotion_embedding_dim"])
+        self.processor = Wav2Vec2Processor.from_pretrained("/home/huxingjian/model/huggingface/facebook/wav2vec2-large-robust-ft-swbd-300h")
+        self.wav2vec = Wav2Vec2ForCTC.from_pretrained("/home/huxingjian/model/huggingface/facebook/wav2vec2-large-robust-ft-swbd-300h", output_hidden_states=True)
+        self.encoder = WAV2VECModel(self.wav2vec, hparams["output_classes"], hparams["emotion_embedding_dim"])
         self.embedding = nn.Embedding(101, 128, padding_idx=100)        
         self.fusion = CrossAttentionModel(128, 128)
         self.linear_layer = nn.Linear(128, 1)
@@ -171,8 +171,8 @@ def train():
     train_loader = create_dataset("train", 1)
     val_loader = create_dataset("val", 1)
     test_loader = create_dataset("test", 1)
-    model = torch.load('f0_predictor.pth', map_location=device)
-    model.to(device)
+    model = PitchModel(hparams).to(device)
+    model.load_state_dict(torch.load('f0_predictor_epoch_74.pth', map_location=device))
     model.eval()
 
     with torch.no_grad():
@@ -219,4 +219,4 @@ def train():
                 np.save(os.path.join(wav2vec_feats_folder, target_file_name), embedded[ind, :].cpu().detach().numpy()) 
 
 if __name__ == "__main__":
-    crema()
+    train()

@@ -4,9 +4,10 @@ import torchaudio
 import numpy as np
 from tqdm import tqdm
 
-classifier = EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb", run_opts={"device":"cuda"})
-folder = "/folder/to/wav_files"
-target_folder = "/folder/to/store/x-vectors"
+classifier = EncoderClassifier.from_hparams(source="/home/huxingjian/model/huggingface/speechbrain/spkrec-ecapa-voxceleb", 
+                                            run_opts={"device":"cuda"})
+folder = "/data/huxingjian/Emotion Speech Dataset/English/test"
+target_folder = "/data/huxingjian/Emotion Speech Dataset/English/test_numpy"
 os.makedirs(target_folder, exist_ok=True)
 wav_files = os.listdir(folder)
 wav_files = [x for x in wav_files if ".wav" in x]

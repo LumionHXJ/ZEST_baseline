@@ -125,7 +125,7 @@ class Generator(torch.nn.Module):
 class CodeGenerator(Generator):
     def __init__(self, h):
         super().__init__(h)
-        self.dict = nn.Embedding(h.num_embeddings, h.embedding_dim)
+        self.dict = nn.Embedding(h.num_embeddings, h.embedding_dim) 
         self.f0 = h.get('f0', None)
         self.multispkr = h.get('multispkr', None)
         self.encodeunits = h.get('encodeunits', None)
@@ -184,6 +184,7 @@ class CodeGenerator(Generator):
     def forward(self, **kwargs):
         code_commit_losses = None
         code_metrics = None
+        
         if self.code_vq and kwargs['code'].dtype is torch.int64:
             x = self.code_vq.level_blocks[0].k[kwargs['code']].transpose(1, 2)
         elif self.code_vq:
@@ -192,6 +193,7 @@ class CodeGenerator(Generator):
             x = code_h_q[0]
         else:
             x = self.dict(kwargs['code']).transpose(1, 2)
+        
         if self.encodeunits:
             x = self.unitencoder(x)
         f0_commit_losses = None
