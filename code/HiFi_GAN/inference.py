@@ -74,7 +74,7 @@ def generate(h, generator, code):
     rtf = (time.time() - start) / (y_g_hat.shape[-1] / h.sampling_rate)
     audio = y_g_hat.squeeze()
     audio = audio * MAX_WAV_VALUE
-    audio = audio.cpu().numpy().astype('int16')
+    audio = audio.detach().cpu().numpy().astype('int16')
     return audio, rtf
 
 def init_worker(queue, arguments):
@@ -208,16 +208,31 @@ def inference(item_index):
                 print(i, filename)
                 emo_embed = np.load("wav2vec_feats/" + filename.replace(".wav", ".npy"))
                 feats = {}
-                f0 = np.load("pred_DSDT_f0/" + fname_out_name + filename.replace(".wav", ".npy"))
+                f0 = np.load("pred_DSDT_f0_cxt/" + fname_out_name + filename.replace(".wav", ".npy"))
                 f0 = f0.astype(np.float32)
                 trg_f0 = f0
                 new_f0 = torch.tensor(f0)
                 new_f0 = new_f0.squeeze(-1)
                 code['f0'] = torch.FloatTensor(new_f0).to(device)
-                code['f0'] = code['f0'].unsqueeze(0).unsqueeze(0)                
-                if code['f0'].shape[-1] > new_code['f0'].shape[-1]:
-                    code['f0'] = code['f0'][:, :, :new_code['f0'].shape[-1]]
+                code['f0'] = code['f0'].unsqueeze(0).unsqueeze(0)
                 code["emo_embed"] = torch.tensor(emo_embed).unsqueeze(0).to(device)
+
+                # only context transfer needed
+                spkr_embed = np.load("EASE_embeddings/" + filename.replace(".wav", ".npy"))
+                code['spkr'] = torch.tensor(spkr_embed).unsqueeze(0).to(device)
+                
+                # only speaker transfer needed
+                '''
+                with open(a.input_code_file) as f:
+                    for data in f.readlines():
+                        data = eval(data.strip())
+                        if data['audio'].split('/')[-1] == filename:
+                            code['code'] = torch.LongTensor([[int(x) for x in data['hubert'].split(' ')]]).to(device)
+                            break'''
+
+                if code['f0'].shape[-1] > code['code'].shape[-1]:
+                    code['f0'] = code['f0'][:, :, :code['code'].shape[-1]]
+                
                 audio, rtf = generate(h, generator, code)
 
                 output_file = os.path.join(a.output_dir, fname_out_name + filename)
@@ -230,7 +245,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--code_file', default=None)
     parser.add_argument('--input_code_file', default="code/test_esd.txt")
-    parser.add_argument('--output_dir', default='DSDT')
+    parser.add_argument('--output_dir', default='DSDT_cxt')
     parser.add_argument('--emo_folder', default='')
     parser.add_argument('--pitch_folder', default='')
     parser.add_argument('--checkpoint_file', required=True)

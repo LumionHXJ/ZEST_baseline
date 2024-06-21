@@ -170,10 +170,11 @@ class PitchModel(nn.Module):
         return pred_pitch, emo_out, spkr_out, mask
 
 def get_f0():
-    os.makedirs("pred_DSDT_f0", exist_ok=True)
+    target_dir = "pred_DSDT_f0_cxt" 
+    os.makedirs(target_dir, exist_ok=True)
     test_loader = create_dataset("test", 1)
     model = PitchModel(hparams).to(device)
-    model.load_state_dict(torch.load('cp_f0_predictor/f0_predictor_epoch_74.pth', map_location=device))
+    model.load_state_dict(torch.load('f0_predictor.pth', map_location=device))
     model.eval()
     sources = ["0011_000021.wav", "0012_000022.wav", "0013_000025.wav",
                "0014_000032.wav", "0015_000034.wav", "0016_000035.wav",
@@ -194,9 +195,10 @@ def get_f0():
                 names = data["names"] 
                 if names[0] == source:
                     source_name = names[0].replace(".wav", "")
+                    inputs_s = inputs
                     tokens_s, mask_s, speaker_s = tokens, mask, speaker
 
-            for i, data in enumerate(test_loader):
+            for i, data in tqdm(enumerate(test_loader)):
                 inputs, mask ,tokens, f0_trg, labels = torch.tensor(data["audio"]).to(device), \
                                                     torch.tensor(data["mask"]).to(device),\
                                                     torch.tensor(data["hubert"]).to(device),\
@@ -206,11 +208,14 @@ def get_f0():
                 speaker = source[:5]
                 if speaker not in names[0] and labels[0] > 0 and (int(names[0][5:11]) - int(source[5:11]))%350 != 0:
                     inputs_t = inputs
-                    pitch_pred, _, _, _ = model(inputs_t, tokens_s, speaker_s, mask_s) # 替换了audio
+                    tokens_t, mask_t, speaker_t = tokens, mask, torch.tensor(data["speaker"]).to(device)
+                    # pitch_pred, _, _, _ = model(inputs_t, tokens_s, speaker_s, mask_s) # transfer emo
+                    # pitch_pred, _, _, _ = model(inputs_t, tokens_t, speaker_s, mask_t) # transfer speaker
+                    pitch_pred, _, _, _ = model(inputs_t, tokens_s, speaker_t, mask_s) # transfer cxt
                     pitch_pred = torch.exp(pitch_pred) - 1
                     final_name = source_name + names[0]
                     final_name = final_name.replace(".wav", ".npy")
-                    np.save(os.path.join("pred_DSDT_f0", final_name), pitch_pred[0, :].cpu().detach().numpy()) 
+                    np.save(os.path.join(target_dir, final_name), pitch_pred[0, :].cpu().detach().numpy()) 
 
 if __name__ == "__main__":
     get_f0()

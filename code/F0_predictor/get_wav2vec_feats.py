@@ -172,7 +172,7 @@ def train():
     val_loader = create_dataset("val", 1)
     test_loader = create_dataset("test", 1)
     model = PitchModel(hparams).to(device)
-    model.load_state_dict(torch.load('f0_predictor_epoch_74.pth', map_location=device))
+    model.load_state_dict(torch.load('f0_predictor.pth', map_location=device))
     model.eval()
 
     with torch.no_grad():

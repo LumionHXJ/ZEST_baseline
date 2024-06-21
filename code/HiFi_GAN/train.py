@@ -21,7 +21,6 @@ from tensorboardX import SummaryWriter
 from torch.utils.data import DistributedSampler, DataLoader
 from torch.distributed import init_process_group
 from torch.nn.parallel import DistributedDataParallel
-from torch.cuda.amp import autocast, GradScaler
 from dataset import CodeDataset, mel_spectrogram, get_dataset_filelist
 from models import CodeGenerator, MultiPeriodDiscriminator, MultiScaleDiscriminator, feature_loss, generator_loss, \
     discriminator_loss
@@ -87,7 +86,6 @@ def train(rank, local_rank, a, h):
 
     scheduler_g = torch.optim.lr_scheduler.ExponentialLR(optim_g, gamma=h.lr_decay, last_epoch=last_epoch)
     scheduler_d = torch.optim.lr_scheduler.ExponentialLR(optim_d, gamma=h.lr_decay, last_epoch=last_epoch)
-    scaler = GradScaler()
 
     training_filelist, validation_filelist = get_dataset_filelist(h)
 
@@ -139,61 +137,51 @@ def train(rank, local_rank, a, h):
             y = y.unsqueeze(1)
             x = {k: torch.autograd.Variable(v.to(device, non_blocking=False)) for k, v in x.items()}
             
-            with autocast():
-                y_g_hat = generator(**x)
-                if h.get('f0_vq_params', None) or h.get('code_vq_params', None):
-                    y_g_hat, commit_losses, metrics = y_g_hat
+            y_g_hat = generator(**x)
+            if h.get('f0_vq_params', None) or h.get('code_vq_params', None):
+                y_g_hat, commit_losses, metrics = y_g_hat
 
-                assert y_g_hat.shape == y.shape, f"Mismatch in vocoder output shape - {y_g_hat.shape} != {y.shape}"
-                if h.get('f0_vq_params', None):
-                    f0_commit_loss = commit_losses[1][0]
-                    f0_metrics = metrics[1][0]
-                if h.get('code_vq_params', None):
-                    code_commit_loss = commit_losses[0][0]
-                    code_metrics = metrics[0][0]
+            assert y_g_hat.shape == y.shape, f"Mismatch in vocoder output shape - {y_g_hat.shape} != {y.shape}"
+            if h.get('f0_vq_params', None):
+                f0_commit_loss = commit_losses[1][0]
+                f0_metrics = metrics[1][0]
+            if h.get('code_vq_params', None):
+                code_commit_loss = commit_losses[0][0]
+                code_metrics = metrics[0][0]
 
-                y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate, h.hop_size,
-                                            h.win_size, h.fmin, h.fmax_for_loss)
+            y_g_hat_mel = mel_spectrogram(y_g_hat.squeeze(1), h.n_fft, h.num_mels, h.sampling_rate, h.hop_size,
+                                        h.win_size, h.fmin, h.fmax_for_loss)
 
             optim_d.zero_grad()
-
-            with autocast():
-                # MPD
-                y_df_hat_r, y_df_hat_g, _, _ = mpd(y, y_g_hat.detach())
-                loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(y_df_hat_r, y_df_hat_g)
-
-                # MSD
-                y_ds_hat_r, y_ds_hat_g, _, _ = msd(y, y_g_hat.detach())
-                loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(y_ds_hat_r, y_ds_hat_g)
-
-                loss_disc_all = loss_disc_s + loss_disc_f
-
-            scaler.scale(loss_disc_all).backward()
-            scaler.step(optim_d)
-            scaler.update()
+            # MPD
+            y_df_hat_r, y_df_hat_g, _, _ = mpd(y, y_g_hat.detach())
+            loss_disc_f, losses_disc_f_r, losses_disc_f_g = discriminator_loss(y_df_hat_r, y_df_hat_g)
+            # MSD
+            y_ds_hat_r, y_ds_hat_g, _, _ = msd(y, y_g_hat.detach())
+            loss_disc_s, losses_disc_s_r, losses_disc_s_g = discriminator_loss(y_ds_hat_r, y_ds_hat_g)
+            loss_disc_all = loss_disc_s + loss_disc_f
+            loss_disc_all.backward()
+            optim_d.step()
 
             # Generator
             optim_g.zero_grad()
 
-            with autocast():
-                # L1 Mel-Spectrogram Loss
-                loss_mel = F.l1_loss(y_mel, y_g_hat_mel) * 45
+            # L1 Mel-Spectrogram Loss
+            loss_mel = F.l1_loss(y_mel, y_g_hat_mel) * 45
 
-                y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = mpd(y, y_g_hat)
-                y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = msd(y, y_g_hat)
-                loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
-                loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
-                loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
-                loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
-                loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
-                if h.get('f0_vq_params', None):
-                    loss_gen_all += f0_commit_loss * h.get('lambda_commit', None)
-                if h.get('code_vq_params', None):
-                    loss_gen_all += code_commit_loss * h.get('lambda_commit_code', None)
-
-            scaler.scale(loss_gen_all).backward()
-            scaler.step(optim_g)
-            scaler.update()
+            y_df_hat_r, y_df_hat_g, fmap_f_r, fmap_f_g = mpd(y, y_g_hat)
+            y_ds_hat_r, y_ds_hat_g, fmap_s_r, fmap_s_g = msd(y, y_g_hat)
+            loss_fm_f = feature_loss(fmap_f_r, fmap_f_g)
+            loss_fm_s = feature_loss(fmap_s_r, fmap_s_g)
+            loss_gen_f, losses_gen_f = generator_loss(y_df_hat_g)
+            loss_gen_s, losses_gen_s = generator_loss(y_ds_hat_g)
+            loss_gen_all = loss_gen_s + loss_gen_f + loss_fm_s + loss_fm_f + loss_mel
+            if h.get('f0_vq_params', None):
+                loss_gen_all += f0_commit_loss * h.get('lambda_commit', None)
+            if h.get('code_vq_params', None):
+                loss_gen_all += code_commit_loss * h.get('lambda_commit_code', None)
+            loss_gen_all.backward()
+            optim_g.step()
 
             if rank == 0:
                 # STDOUT logging
@@ -303,11 +291,11 @@ def main():
     parser.add_argument('--emo_folder', default='')
     parser.add_argument('--config', default='')
     parser.add_argument('--training_epochs', default=200, type=int)
-    parser.add_argument('--training_steps', default=1e5, type=int)
-    parser.add_argument('--stdout_interval', default=10, type=int)
-    parser.add_argument('--checkpoint_interval', default=1000, type=int)
+    parser.add_argument('--training_steps', default=150000, type=int)
+    parser.add_argument('--stdout_interval', default=100, type=int)
+    parser.add_argument('--checkpoint_interval', default=5000, type=int)
     parser.add_argument('--summary_interval', default=100, type=int)
-    parser.add_argument('--validation_interval', default=1000, type=int)
+    parser.add_argument('--validation_interval', default=10000000000, type=int)
     #parser.add_argument('--fine_tuning', default=False, type=bool)
     parser.add_argument('--local_rank', default=0, type=int)
     parser.add_argument('--distributed-world-size', type=int)
